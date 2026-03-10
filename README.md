@@ -74,6 +74,8 @@ Eso sirve para:
 
 ## Interfaz gráfica
 
+<img width="1274" height="887" alt="about-auditorria" src="https://github.com/user-attachments/assets/833c904b-bf74-46c0-80ac-c59cd77edfda" />
+
 La interfaz incluye:
 
 - tabla de resultados
