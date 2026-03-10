@@ -1,3 +1,10 @@
+"""Implementa la interfaz gráfica de AudiTorría con Tkinter.
+
+Gestiona la ventana principal, la recogida de parámetros, el lanzamiento de la
+auditoría en segundo plano y la visualización de resultados, filtros y ayudas
+desde una capa puramente visual.
+"""
+
 from __future__ import annotations
 
 import os
@@ -715,6 +722,7 @@ class VentanaPrincipal:
 
     def _obtener_parametros(self) -> ParametrosAuditoria:
         """Lee la información del formulario y la transforma en parámetros de auditoría."""
+        # Según la opción elegida, se prepara la lista de equipos a revisar.
         if self.modo_objetivo_var.get() == "red":
             red = self.red_var.get().strip()
             red_normalizada = normalizar_red_para_auditoria(red)
@@ -731,6 +739,7 @@ class VentanaPrincipal:
             descripcion = "Equipo local auditado"
             modo_auditoria = "local"
 
+        # A partir de aquí se juntan todos los datos en un único objeto.
         return ParametrosAuditoria(
             objetivos=objetivos,
             descripcion_objetivo=descripcion,
@@ -742,6 +751,7 @@ class VentanaPrincipal:
 
     def _iniciar_auditoria(self) -> None:
         """Valida el formulario y arranca la auditoría en un hilo secundario."""
+        # Si ya hay una revisión en marcha, no se lanza otra por encima.
         if self.hilo_auditoria and self.hilo_auditoria.is_alive():
             messagebox.showinfo(NOMBRE_APLICACION, "Ya hay una auditoría en ejecución.")
             return
@@ -765,7 +775,7 @@ class VentanaPrincipal:
         self.boton_ejecutar.configure(state="disabled")
         self.barra_progreso.configure(value=0)
 
-        # El trabajo pesado se mueve a otro hilo para que la ventana siga respondiendo.
+        # La revisión real se manda a otro hilo para que la ventana no se quede bloqueada.
         self.hilo_auditoria = threading.Thread(
             target=self._ejecutar_auditoria_en_segundo_plano,
             args=(parametros,),
@@ -792,6 +802,7 @@ class VentanaPrincipal:
 
     def _procesar_cola(self) -> None:
         """Consume todos los mensajes pendientes enviados por el hilo de trabajo."""
+        # La cola sirve para pasar mensajes del hilo de auditoría a la ventana.
         while True:
             try:
                 tipo, contenido = self.cola_mensajes.get_nowait()
@@ -812,6 +823,7 @@ class VentanaPrincipal:
         self.estado_var.set(progreso.mensaje)
         self._escribir_registro(f"{progreso.mensaje} ({progreso.porcentaje:.0f}%)")
 
+        # Si ya llegó información de un equipo, se guarda y se refresca la tabla.
         if progreso.resultado_equipo is not None:
             self._registrar_resultado(progreso.resultado_equipo)
             self._aplicar_filtros_tabla()
@@ -853,6 +865,7 @@ class VentanaPrincipal:
 
     def _registrar_resultado(self, resultado: ResultadoEquipo) -> None:
         """Guarda o reemplaza en memoria el resultado de un equipo ya procesado."""
+        # Si la IP ya estaba guardada, se sustituye por la versión más reciente.
         if resultado.ip in self.resultados_por_ip:
             for indice, resultado_existente in enumerate(self.resultados_actuales):
                 if resultado_existente.ip == resultado.ip:
@@ -889,9 +902,11 @@ class VentanaPrincipal:
         texto_hallazgos = " ".join(resultado.hallazgos_host).upper()
         texto_cves = " ".join(resultado.vulnerabilidades_cve).upper()
 
+        # Primero se mira si el equipo ni siquiera respondió.
         if not resultado.activo and not puertos_abiertos:
             return "Sin respuesta", "sin_respuesta"
 
+        # Después se da prioridad a los hallazgos más graves y a los CVEs.
         if "[CRITICO]" in texto_cves or "[CVSS 9." in texto_cves or "[CVSS 10." in texto_cves:
             return "Alto", "riesgo_alto"
 
@@ -907,6 +922,7 @@ class VentanaPrincipal:
         puertos_riesgo_alto = {23, 445, 3389, 1433, 1521, 3306, 5432}
         puertos_riesgo_medio = {21, 22, 25, 80, 110, 139, 143, 587, 5900, 6379, 8080, 8443}
 
+        # Si no hay avisos claros, se usa una regla sencilla basada en puertos expuestos.
         if puertos_abiertos & puertos_riesgo_alto:
             return "Alto", "riesgo_alto"
 
@@ -933,6 +949,8 @@ class VentanaPrincipal:
         self._limpiar_tabla_resultados()
 
         for resultado in self.resultados_actuales:
+            # Se junta casi toda la información en un solo texto para que el buscador
+            # encuentre coincidencias aunque el dato esté en otra sección del resultado.
             estado = "Activo" if resultado.activo else "Sin respuesta"
             riesgo, _ = self._obtener_riesgo_y_etiqueta(resultado)
             puertos_texto = ", ".join(str(puerto.numero) for puerto in resultado.puertos_abiertos) or "ninguno"
@@ -954,6 +972,7 @@ class VentanaPrincipal:
                 ]
             )
 
+            # Cada filtro descarta lo que no encaja antes de añadir la fila.
             if texto_busqueda and texto_busqueda not in texto_completo:
                 continue
             if estado_seleccionado != "Todos" and estado != estado_seleccionado:
@@ -972,6 +991,7 @@ class VentanaPrincipal:
 
     def _mostrar_detalle_equipo(self, _evento: object | None = None) -> None:
         """Abre una ventana con el detalle completo del equipo sobre el que se hizo doble clic."""
+        # Se toma la fila seleccionada y se busca su resultado completo en memoria.
         seleccion = self.tabla_resultados.focus()
         if not seleccion:
             return
@@ -987,6 +1007,7 @@ class VentanaPrincipal:
 
         riesgo, etiqueta_color = self._obtener_riesgo_y_etiqueta(resultado)
 
+        # Esta ventana enseña toda la información de un equipo sin recortar tanto como la tabla.
         ventana_detalle = tk.Toplevel(self.raiz)
         ventana_detalle.title(f"Información del equipo - {resultado.ip}")
         ventana_detalle.geometry("760x520")

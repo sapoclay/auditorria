@@ -1,3 +1,10 @@
+"""Coordina el arranque de AudiTorría.
+
+Este módulo decide si la aplicación debe ejecutarse en consola o con interfaz
+gráfica. No realiza auditorías por sí mismo: solo interpreta el modo de
+entrada y delega en el módulo adecuado.
+"""
+
 from __future__ import annotations
 
 import argparse

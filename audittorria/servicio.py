@@ -1,3 +1,10 @@
+"""Orquesta la ejecución completa de una auditoría.
+
+Este módulo actúa como punto central entre la interfaz de entrada, el motor de
+auditoría de red o local y la generación del PDF final, manteniendo ese flujo
+desacoplado del resto de capas.
+"""
+
 from __future__ import annotations
 
 from .auditoria import auditar_objetivos

@@ -1,3 +1,10 @@
+"""Centraliza constantes compartidas por toda la aplicación.
+
+Incluye el nombre visible del programa, el catálogo de puertos comunes, los
+límites de tamaño para auditorías de red y la configuración usada para la
+consulta de vulnerabilidades CVE y la generación de informes.
+"""
+
 from pathlib import Path
 
 # Nombre visible de la aplicación en consola, ventanas y PDF.

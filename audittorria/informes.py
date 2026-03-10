@@ -1,3 +1,10 @@
+"""Genera el informe PDF final de la auditoría.
+
+Este módulo transforma los resultados internos en un documento legible con
+resumen ejecutivo, tablas, detalle por equipo y evidencias relevantes para su
+revisión posterior.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -23,6 +30,7 @@ from .modelos import ResultadoEquipo, ResumenAuditoria
 def crear_estilos_pdf():
     """Define estilos visuales reutilizables para mantener uniforme el informe."""
     estilos_base = getSampleStyleSheet()
+    # Aquí se preparan los estilos que luego se reutilizan en todo el documento.
     estilos_base.add(
         ParagraphStyle(
             name="TituloCentro",
@@ -71,6 +79,7 @@ def ajustar_texto_largo(texto: str, longitud_segmento: int = 28) -> str:
             partes_ajustadas.append(token)
             continue
 
+        # Si una palabra es demasiado larga, se parte en trozos para que no rompa la tabla.
         segmentos = [token[indice:indice + longitud_segmento] for indice in range(0, len(token), longitud_segmento)]
         partes_ajustadas.append("<br/>".join(segmentos))
 
@@ -93,6 +102,7 @@ def es_resultado_local(resultado: ResultadoEquipo) -> bool:
 
 def obtener_ips_mostrables(resultado: ResultadoEquipo) -> str:
     """Obtiene la IP o conjunto de IPs más representativo para mostrar en el informe."""
+    # En auditoría local interesa enseñar todas las IPs detectadas, no solo una.
     for dato in resultado.informacion_sistema:
         prefijo = "Direcciones IP detectadas:"
         if dato.startswith(prefijo):
@@ -116,6 +126,7 @@ def construir_tabla_resumen(resultados: list[ResultadoEquipo]) -> Table:
     estilos = crear_estilos_pdf()
     filas: list[list[Any]] = [["IP", "Estado", "Host", "Puertos abiertos", "Tiempo ping"]]
 
+    # Esta tabla sirve como vista rápida antes de entrar al detalle equipo por equipo.
     for resultado in resultados:
         filas.append(
             [
@@ -152,6 +163,7 @@ def generar_pdf(resumen: ResumenAuditoria, ruta_pdf: Path | None = None) -> Path
     ruta_destino = ruta_pdf or parametros.ruta_pdf
     estilos = crear_estilos_pdf()
 
+    # Se prepara el documento base con márgenes y tamaño de página.
     documento = SimpleDocTemplate(
         str(ruta_destino),
         pagesize=A4,
@@ -205,7 +217,7 @@ def generar_pdf(resumen: ResumenAuditoria, ruta_pdf: Path | None = None) -> Path
     elementos.append(construir_tabla_resumen(resultados))
     elementos.append(PageBreak())
 
-    # Detalle individual para que cada equipo tenga su evidencia separada.
+    # Después del resumen, cada equipo tiene su propio bloque con toda la información.
     for indice, resultado in enumerate(resultados, start=1):
         elementos.append(Paragraph(obtener_titulo_equipo(resultado, indice), estilos["SubtituloAzul"]))
         elementos.append(
@@ -222,6 +234,7 @@ def generar_pdf(resumen: ResumenAuditoria, ruta_pdf: Path | None = None) -> Path
         )
 
         if resultado.puertos_abiertos:
+            # Si hubo puertos abiertos, se muestran en una tabla aparte para leerlos mejor.
             filas_puertos: list[list[Any]] = [["Puerto", "Servicio", "Estado"]]
             for puerto in resultado.puertos_abiertos:
                 filas_puertos.append(
@@ -246,6 +259,7 @@ def generar_pdf(resumen: ResumenAuditoria, ruta_pdf: Path | None = None) -> Path
             elementos.append(Paragraph("Puertos abiertos detectados", estilos["TextoNormalEspaciado"]))
             elementos.append(tabla_puertos)
         else:
+            # Si no hubo puertos abiertos, también se deja indicado de forma explícita.
             elementos.append(
                 Paragraph(
                     "No se detectaron puertos abiertos dentro del conjunto auditado.",
@@ -253,6 +267,7 @@ def generar_pdf(resumen: ResumenAuditoria, ruta_pdf: Path | None = None) -> Path
                 )
             )
 
+        # A partir de aquí se añaden secciones solo si realmente tienen contenido.
         if resultado.comprobaciones_adicionales:
             elementos.append(Spacer(1, 0.2 * cm))
             elementos.append(Paragraph("Comprobaciones adicionales", estilos["TextoNormalEspaciado"]))
@@ -293,8 +308,10 @@ def generar_pdf(resumen: ResumenAuditoria, ruta_pdf: Path | None = None) -> Path
             elementos.append(Spacer(1, 0.2 * cm))
             elementos.append(Paragraph(f"<b>Detalle técnico:</b> {resultado.error}", estilos["TextoNormalEspaciado"]))
 
+        # Se añade salto de página entre equipos para que cada uno quede separado.
         if indice != len(resultados):
             elementos.append(PageBreak())
 
+    # En este paso final se escribe el PDF completo en disco.
     documento.build(elementos)
     return ruta_destino

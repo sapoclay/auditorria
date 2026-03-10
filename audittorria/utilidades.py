@@ -1,3 +1,10 @@
+"""Agrupa utilidades de validación y normalización de entrada.
+
+Aquí viven las funciones auxiliares que interpretan redes, IPs, puertos y la
+ruta de salida del informe para que consola e interfaz gráfica reutilicen la
+misma lógica de preparación de datos.
+"""
+
 from __future__ import annotations
 
 import ipaddress

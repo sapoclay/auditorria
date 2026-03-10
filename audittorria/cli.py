@@ -1,3 +1,10 @@
+"""Define la interfaz de línea de comandos de AudiTorría.
+
+Su responsabilidad es recoger parámetros desde terminal, validarlos,
+transformarlos en un objeto de configuración común y lanzar la auditoría
+mostrando el progreso al usuario.
+"""
+
 from __future__ import annotations
 
 import argparse

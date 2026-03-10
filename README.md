@@ -155,4 +155,4 @@ Usa AudiTorría solo debería utilizarse sobre equipos propios o con permiso exp
 
 Proyecto: [https://github.com/sapoclay/auditorria](https://github.com/sapoclay/auditorria)
 
-Creado por entreunosyceros
+Creado por entreunosyceros con ☕ y 🚬

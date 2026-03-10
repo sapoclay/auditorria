@@ -1,3 +1,10 @@
+"""Implementa la auditoría local del equipo anfitrión.
+
+Aquí se agrupan las comprobaciones no intrusivas que se hacen sobre el propio
+sistema: puertos en escucha, firewall, actualizaciones, endurecimiento,
+usuarios, servicios y versiones instaladas con posible cruce contra CVEs.
+"""
+
 from __future__ import annotations
 
 import getpass
@@ -169,6 +176,7 @@ def obtener_estado_servicio_linux(servicios: list[str]) -> str | None:
 def obtener_versiones_instaladas_servicios_linux(puertos_abiertos: list[ResultadoPuerto]) -> list[tuple[str, str, str]]:
     """Detecta versiones realmente instaladas de servicios comunes en Linux usando paquetes y comandos locales."""
     puertos = {puerto.numero for puerto in puertos_abiertos}
+    # Esta lista relaciona puertos conocidos con programas habituales del sistema.
     candidatos = [
         {
             "producto": "Apache HTTP Server",
@@ -245,9 +253,11 @@ def obtener_versiones_instaladas_servicios_linux(puertos_abiertos: list[Resultad
     resultados: list[tuple[str, str, str]] = []
     detectados: set[tuple[str, str]] = set()
     for candidato in candidatos:
+        # Solo tiene sentido revisar un producto si hay pistas de que está presente.
         if not (puertos & candidato["puertos"] or obtener_estado_servicio_linux(candidato["servicios"])):
             continue
 
+        # Primero se intenta por paquetes y, si no, por comandos locales.
         version, evidencia = obtener_version_paquete_linux(candidato["paquetes"])
         if version is None:
             version, evidencia = obtener_version_desde_comandos(candidato["comandos"])
@@ -310,6 +320,7 @@ def obtener_versiones_instaladas_servicios_windows() -> list[tuple[str, str, str
 
 def analizar_versiones_instaladas_y_cves_locales(resultado: ResultadoEquipo) -> None:
     """Obtiene versiones instaladas localmente de servicios y busca CVEs asociadas en NVD/NIST."""
+    # La forma de descubrir versiones cambia según el sistema.
     if os.name == "nt":
         versiones_locales = obtener_versiones_instaladas_servicios_windows()
     else:
@@ -322,6 +333,7 @@ def analizar_versiones_instaladas_y_cves_locales(resultado: ResultadoEquipo) -> 
         [f"{producto} {version} | Evidencia local: {evidencia}" for producto, version, evidencia in versiones_locales]
     )
 
+    # Para no alargar demasiado la consulta, se revisan solo algunos servicios detectados.
     vulnerabilidades: list[tuple[float, str]] = []
     vistas: set[str] = set()
     for producto, version, _evidencia in versiones_locales[:6]:
@@ -336,6 +348,7 @@ def analizar_versiones_instaladas_y_cves_locales(resultado: ResultadoEquipo) -> 
         resultado.vulnerabilidades_cve.extend(
             [descripcion for _, descripcion in vulnerabilidades[:15] if descripcion not in resultado.vulnerabilidades_cve]
         )
+        # Se añade un aviso general según la gravedad más alta encontrada.
         maxima = vulnerabilidades[0][0]
         if maxima >= 9.0:
             resultado.hallazgos_host.append("[ALTO] Se detectaron CVEs críticos asociados a versiones instaladas localmente")
@@ -359,6 +372,7 @@ def detectar_puertos_escucha_locales_linux() -> tuple[list[ResultadoPuerto], lis
         if codigo is None or not salida:
             continue
 
+        # Se leen solo las líneas que indican que un puerto está escuchando.
         resultados: dict[int, ResultadoPuerto] = {}
         lineas_resumen: list[str] = []
         for linea in salida.splitlines():
@@ -2688,6 +2702,7 @@ def obtener_controles_windows_avanzados() -> tuple[list[str], list[str]]:
     informacion: list[str] = []
     hallazgos: list[str] = []
 
+    # Cada función aporta una pequeña pieza del estado de seguridad del equipo.
     for funcion in [
         obtener_bitlocker_windows,
         obtener_cuentas_locales_windows,
@@ -2778,6 +2793,7 @@ def obtener_resumen_servicios() -> tuple[list[str], list[str]]:
 
 def construir_resultado_local(parametros: ParametrosAuditoria) -> ResultadoEquipo:
     """Compone el resultado completo de la auditoría local del equipo actual."""
+    # Se recoge primero la identidad básica del equipo para usarla en todo el informe.
     ip_principal = obtener_ip_principal_local()
     nombre_host = socket.gethostname()
     fqdn = socket.getfqdn()
@@ -2803,6 +2819,7 @@ def construir_resultado_local(parametros: ParametrosAuditoria) -> ResultadoEquip
         ]
     )
 
+    # A partir de aquí se van añadiendo bloques de información uno por uno.
     puertos_locales, resumen_puertos = detectar_puertos_escucha_locales()
     resultado.puertos_abiertos = puertos_locales
     if resumen_puertos:
@@ -2855,13 +2872,16 @@ def construir_resultado_local(parametros: ParametrosAuditoria) -> ResultadoEquip
     resultado.informacion_sistema.extend(informacion_endurecimiento)
     resultado.hallazgos_host.extend(hallazgos_endurecimiento)
 
+    # Al final se intenta relacionar lo instalado con posibles fallos conocidos.
     analizar_versiones_instaladas_y_cves_locales(resultado)
 
+    # Este bloque extra solo existe en Windows porque usa herramientas propias de ese sistema.
     if os.name == "nt":
         informacion_windows, hallazgos_windows = obtener_controles_windows_avanzados()
         resultado.informacion_sistema.extend(informacion_windows)
         resultado.hallazgos_host.extend(hallazgos_windows)
 
+    # Si no salió nada importante, también se deja indicado para que el informe no quede vacío.
     if not resultado.hallazgos_host:
         resultado.hallazgos_host.append("[INFO] No se detectaron hallazgos de riesgo destacados en la comprobación local básica")
 

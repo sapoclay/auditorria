@@ -1,3 +1,10 @@
+"""Define las estructuras de datos compartidas entre módulos.
+
+Las dataclasses de este archivo sirven como contrato interno entre la capa de
+entrada, los motores de auditoría, el servicio orquestador y la generación del
+informe final.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

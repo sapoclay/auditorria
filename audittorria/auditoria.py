@@ -1,3 +1,10 @@
+"""Implementa la auditoría de red sobre equipos remotos.
+
+Este módulo concentra las comprobaciones de conectividad, escaneo de puertos,
+lectura de banners, análisis ligero de servicios y consulta de CVEs públicas
+para enriquecer el resultado de cada host auditado.
+"""
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -37,6 +44,7 @@ def ejecutar_ping(ip: str, tiempo_espera_ms: int = 1000) -> tuple[bool, str, str
     sistema = platform.system().lower()
     es_ipv6 = ipaddress.ip_address(ip).version == 6
 
+    # El comando cambia un poco entre Windows y Linux.
     if sistema == "windows":
         comando = ["ping"]
         if es_ipv6:
@@ -239,6 +247,7 @@ def realizar_comprobaciones_adicionales(ip: str, puertos_abiertos: list[Resultad
     comprobaciones: list[str] = []
     puertos = {puerto.numero for puerto in puertos_abiertos}
 
+    # Solo se intenta leer información extra de los servicios que realmente aparecieron abiertos.
     if 21 in puertos:
         banner_ftp = leer_banner_generico(ip, 21)
         if banner_ftp:
@@ -276,6 +285,7 @@ def realizar_comprobaciones_adicionales(ip: str, puertos_abiertos: list[Resultad
 
 def extraer_versiones_servicios(comprobaciones: list[str]) -> list[tuple[str, str, str]]:
     """Intenta identificar producto, versión exacta y origen a partir de banners y cabeceras."""
+    # Cada patrón intenta reconocer un programa y su versión dentro del texto recogido.
     patrones = [
         ("OpenSSH", re.compile(r"OpenSSH[_/ -](?P<version>[0-9][A-Za-z0-9._\-p]+)", re.IGNORECASE)),
         ("vsFTPd", re.compile(r"vsFTPd\s+(?P<version>[0-9][A-Za-z0-9._\-]+)", re.IGNORECASE)),
@@ -295,6 +305,7 @@ def extraer_versiones_servicios(comprobaciones: list[str]) -> list[tuple[str, st
     firmas_unicas: set[tuple[str, str]] = set()
 
     for comprobacion in comprobaciones:
+        # Se revisa cada texto recogido hasta encontrar una versión reconocible.
         for producto, patron in patrones:
             coincidencia = patron.search(comprobacion)
             if not coincidencia:
@@ -362,6 +373,7 @@ def extraer_metricas_cve(registro_cve: dict) -> tuple[float, str]:
 def consultar_cves_producto(producto: str, version: str) -> list[tuple[float, str]]:
     """Consulta una base pública de CVEs y prioriza las coincidencias por severidad CVSS."""
     clave_cache = (producto.lower(), version.lower())
+    # Si ya se consultó antes lo mismo, se reutiliza el resultado guardado.
     if clave_cache in _CACHE_CVES:
         return _CACHE_CVES[clave_cache]
 
@@ -385,6 +397,7 @@ def consultar_cves_producto(producto: str, version: str) -> list[tuple[float, st
     vistos: set[str] = set()
 
     for entrada in datos.get("vulnerabilities", []):
+        # Se filtran solo las entradas que parecen hablar de ese producto y esa versión.
         cve = entrada.get("cve", {})
         cve_id = str(cve.get("id", "")).strip()
         if not cve_id or cve_id in vistos:
@@ -424,6 +437,7 @@ def consultar_cves_producto(producto: str, version: str) -> list[tuple[float, st
 
 def analizar_versiones_y_cves(resultado: ResultadoEquipo) -> None:
     """Extrae versiones exactas de servicios y consulta vulnerabilidades CVE relacionadas."""
+    # Primero se intenta sacar versiones desde banners y cabeceras ya recogidos.
     versiones_detectadas = extraer_versiones_servicios(resultado.comprobaciones_adicionales)
     if not versiones_detectadas:
         return
@@ -436,6 +450,7 @@ def analizar_versiones_y_cves(resultado: ResultadoEquipo) -> None:
     vulnerabilidades: list[tuple[float, str]] = []
     vistos: set[str] = set()
     for producto, version, _origen in versiones_detectadas[:4]:
+        # Se limita el número de consultas para no hacer la revisión demasiado lenta.
         for puntuacion, descripcion in consultar_cves_producto(producto, version):
             if descripcion in vistos:
                 continue
@@ -448,6 +463,7 @@ def analizar_versiones_y_cves(resultado: ResultadoEquipo) -> None:
     if not resultado.vulnerabilidades_cve:
         return
 
+    # Se deja un resumen corto según el nivel más alto encontrado.
     maxima = vulnerabilidades[0][0]
     if maxima >= 9.0:
         resultado.observaciones_seguridad.append("Se detectaron CVEs críticos asociados a versiones exactas de servicios expuestos.")
@@ -485,6 +501,7 @@ def escanear_puertos(ip: str, puertos: Iterable[int], concurrencia: int) -> list
     """Revisa varios puertos en paralelo para reducir el tiempo de espera."""
     resultados: list[ResultadoPuerto] = []
 
+    # Se prueban varios puertos a la vez para tardar menos en cada equipo.
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, concurrencia)) as ejecutor:
         futuros = [ejecutor.submit(comprobar_puerto, ip, puerto) for puerto in puertos]
         for futuro in concurrent.futures.as_completed(futuros):
@@ -501,6 +518,7 @@ def analizar_seguridad(resultado: ResultadoEquipo) -> list[str]:
     observaciones: list[str] = []
     puertos_abiertos = {puerto.numero for puerto in resultado.puertos_abiertos}
 
+    # Estas observaciones son orientativas y sirven como resumen rápido.
     if not resultado.activo:
         observaciones.append("El equipo no respondió al ping. Puede estar apagado, filtrado o bloquear ICMP.")
 
@@ -539,6 +557,7 @@ def auditar_equipo(ip: str, puertos: list[int], concurrencia_puertos: int) -> Re
     resultado = ResultadoEquipo(ip=ip)
 
     try:
+        # Primero se recoge la información más básica del equipo.
         activo, tiempo_respuesta, ttl, detalle_ping = ejecutar_ping(ip)
         resultado.activo = activo
         resultado.tiempo_respuesta_ms = tiempo_respuesta
@@ -547,12 +566,13 @@ def auditar_equipo(ip: str, puertos: list[int], concurrencia_puertos: int) -> Re
         resultado.sistema_operativo_probable = estimar_sistema_operativo(ttl)
         resultado.nombre_host = resolver_nombre_host(ip)
 
-        # Se auditan puertos incluso si falla el ping porque algunos equipos filtran ICMP.
+        # Aunque el ping falle, se siguen revisando puertos por si el equipo solo bloquea ICMP.
         resultado.puertos_abiertos = escanear_puertos(ip, puertos, concurrencia_puertos)
         resultado.comprobaciones_adicionales = realizar_comprobaciones_adicionales(ip, resultado.puertos_abiertos)
         analizar_versiones_y_cves(resultado)
         resultado.observaciones_seguridad.extend(analizar_seguridad(resultado))
 
+        # Si no hubo respuesta ni puertos abiertos, se guarda el detalle del ping fallido.
         if not activo and not resultado.puertos_abiertos:
             resultado.error = detalle_ping
     except Exception as error:  # noqa: BLE001
@@ -570,6 +590,7 @@ def auditar_objetivos(
     """Ejecuta la auditoría completa de todos los equipos definidos por el usuario."""
     resultados: list[ResultadoEquipo] = []
 
+    # Cada equipo se revisa en paralelo para acelerar redes con varios objetivos.
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, parametros.concurrencia)) as ejecutor:
         futuros = {
             ejecutor.submit(
@@ -582,6 +603,7 @@ def auditar_objetivos(
         }
 
         for indice, futuro in enumerate(concurrent.futures.as_completed(futuros), start=1):
+            # Cada vez que termina un equipo, se guarda y se notifica el avance.
             resultado = futuro.result()
             resultados.append(resultado)
 
@@ -600,5 +622,6 @@ def auditar_objetivos(
                     )
                 )
 
+    # Al final se ordenan las IPs para que el informe quede más claro de leer.
     resultados_ordenados = sorted(resultados, key=lambda equipo: int(ipaddress.ip_address(equipo.ip)))
     return ResumenAuditoria(parametros=parametros, resultados=resultados_ordenados)
