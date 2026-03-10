@@ -123,6 +123,17 @@ Clona el repositorio y ejecuta:
 
 El lanzador crea el entorno de trabajo si hace falta, instala lo necesario y abre la aplicación.
 
+### Arranque en Windows
+
+- desde terminal en modo automático:
+  - `python run_app.py`
+- desde terminal en modo consola:
+  - `python run_app.py --modo consola`
+  - también puede usar `python run_app.py --cli`
+- desde terminal forzando la interfaz gráfica:
+  - `python run_app.py --modo grafico`
+  - también puede usar `python run_app.py --gui`
+
 ## Uso rápido
 
 ### Abrir la interfaz gráfica

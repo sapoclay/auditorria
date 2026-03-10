@@ -7,93 +7,147 @@ from pathlib import Path
 import hashlib
 
 # Configuración principal del lanzador.
-VENV_DIR = '.venv'
-MAIN_FILE = 'audittorria_main.py'
-REQUIREMENTS_FILE = 'requirements.txt'
+DIRECTORIO_ENTORNO_VIRTUAL = '.venv'
+ARCHIVO_PRINCIPAL = 'audittorria_main.py'
+ARCHIVO_REQUISITOS = 'requirements.txt'
+ALIASES_MODO_GRAFICO = {'--gui', '--grafico'}
+ALIASES_MODO_CONSOLA = {'--cli', '--consola'}
 
 
-def is_venv_exists():
+def existe_entorno_virtual():
     """Comprueba si el entorno virtual existe y es válido"""
-    if not os.path.exists(VENV_DIR) or not os.path.isdir(VENV_DIR):
+    if not os.path.exists(DIRECTORIO_ENTORNO_VIRTUAL) or not os.path.isdir(DIRECTORIO_ENTORNO_VIRTUAL):
         return False
     
     # Verificar que el ejecutable Python existe dentro del venv
-    python_exe = get_python_executable()
-    if not os.path.exists(python_exe):
+    ejecutable_python = obtener_ejecutable_python()
+    if not os.path.exists(ejecutable_python):
         return False
     
     return True
 
 
-def create_venv():
+def crear_entorno_virtual():
     """Crea el entorno virtual"""
     # Si existe un directorio .venv corrupto, eliminarlo primero
-    if os.path.exists(VENV_DIR):
+    if os.path.exists(DIRECTORIO_ENTORNO_VIRTUAL):
         print("Eliminando entorno virtual corrupto...")
         import shutil
-        shutil.rmtree(VENV_DIR)
+        shutil.rmtree(DIRECTORIO_ENTORNO_VIRTUAL)
     
     print("Creando el entorno virtual...")
-    venv.create(VENV_DIR, with_pip=True)
+    venv.create(DIRECTORIO_ENTORNO_VIRTUAL, with_pip=True)
 
-    # Actualizar pip, setuptools y wheel
-    pip_exe = get_pip_executable()
-    subprocess.run([pip_exe, 'install', '--upgrade', 'pip', 'setuptools', 'wheel'], 
-                   check=True, capture_output=True)
-    print(f" [OK] Entorno virtual creado en: {VENV_DIR}")
+    # Actualizar pip, setuptools y wheel. En Windows es más fiable usar
+    # `python -m pip` que invocar `pip.exe` directamente.
+    print("Actualizando herramientas base del entorno...")
+    try:
+        ejecutar_comando_pip('install', '--upgrade', 'pip', 'setuptools', 'wheel', capture_output=True)
+    except subprocess.CalledProcessError as error_subproceso:
+        print("[!] No se pudieron actualizar pip/setuptools/wheel.")
+        print("    Se continuará con las versiones incluidas en el entorno virtual.")
+        detalles = formatear_error_subproceso(error_subproceso)
+        if detalles:
+            print(detalles)
+    print(f" [OK] Entorno virtual creado en: {DIRECTORIO_ENTORNO_VIRTUAL}")
 
 
-def get_python_executable():
+def obtener_ejecutable_python():
     """Obtiene la ruta al ejecutable Python del entorno virtual"""
     if platform.system().lower() == 'windows':
-        return os.path.join(VENV_DIR, 'Scripts', 'python.exe')
-    return os.path.join(VENV_DIR, 'bin', 'python')
+        return os.path.join(DIRECTORIO_ENTORNO_VIRTUAL, 'Scripts', 'python.exe')
+    return os.path.join(DIRECTORIO_ENTORNO_VIRTUAL, 'bin', 'python')
 
 
-def get_pip_executable():
-    """Obtiene la ruta al ejecutable pip del entorno virtual"""
-    if platform.system().lower() == 'windows':
-        return os.path.join(VENV_DIR, 'Scripts', 'pip.exe')
-    return os.path.join(VENV_DIR, 'bin', 'pip')
+def ejecutar_comando_pip(*argumentos, capture_output=False):
+    """Ejecuta pip usando `python -m pip` para evitar problemas con `pip.exe`"""
+    ejecutable_python = obtener_ejecutable_python()
+    return subprocess.run(
+        [ejecutable_python, '-m', 'pip', *argumentos],
+        check=True,
+        capture_output=capture_output,
+        text=capture_output,
+    )
 
-def install_requirements():
+
+def formatear_error_subproceso(error_subproceso):
+    """Devuelve una versión legible del stderr/stdout de un subproceso fallido"""
+    partes = []
+    salida_estandar = getattr(error_subproceso, 'stdout', None)
+    salida_error = getattr(error_subproceso, 'stderr', None)
+
+    if salida_estandar:
+        partes.append(salida_estandar.strip())
+    if salida_error:
+        partes.append(salida_error.strip())
+
+    return "\n".join(parte for parte in partes if parte)
+
+
+def normalizar_argumentos_lanzador(argumentos=None):
+    """Normaliza alias del lanzador para que ambos modos sean fáciles de invocar."""
+    argumentos_normalizados = []
+
+    for argumento in argumentos or []:
+        argumento_normalizado = argumento.lower()
+        if argumento_normalizado in ALIASES_MODO_GRAFICO:
+            argumentos_normalizados.extend(['--modo', 'grafico'])
+            continue
+        if argumento_normalizado in ALIASES_MODO_CONSOLA:
+            argumentos_normalizados.extend(['--modo', 'consola'])
+            continue
+        argumentos_normalizados.append(argumento)
+
+    return argumentos_normalizados
+
+
+def instalar_requisitos():
     """Instala las dependencias desde requirements.txt"""
-    pip_exe = get_pip_executable()
-
-    if not os.path.exists(REQUIREMENTS_FILE):
-        print(f"[OK]  {REQUIREMENTS_FILE} no encontrado, continuando sin dependencias extras...")
+    if not os.path.exists(ARCHIVO_REQUISITOS):
+        print(f"[OK]  {ARCHIVO_REQUISITOS} no encontrado, continuando sin dependencias extras...")
         return
 
     # Evitar reinstalaciones innecesarias si requirements.txt no cambió
-    req_path = Path(REQUIREMENTS_FILE)
-    stamp_path = Path(VENV_DIR) / '.requirements.sha256'
-    req_hash = hashlib.sha256(req_path.read_bytes()).hexdigest()
+    ruta_requisitos = Path(ARCHIVO_REQUISITOS)
+    ruta_marca = Path(DIRECTORIO_ENTORNO_VIRTUAL) / '.requirements.sha256'
+    hash_requisitos = hashlib.sha256(ruta_requisitos.read_bytes()).hexdigest()
     
-    if stamp_path.exists() and stamp_path.read_text(encoding='utf-8').strip() == req_hash:
+    if ruta_marca.exists() and ruta_marca.read_text(encoding='utf-8').strip() == hash_requisitos:
         print("[OK] Dependencias verificadas (sin cambios)")
         return
 
     print("Instalando dependencias...")
-    subprocess.run([pip_exe, 'install', '-r', REQUIREMENTS_FILE], check=True)
-    stamp_path.write_text(req_hash, encoding='utf-8')
+    ejecutar_comando_pip('install', '-r', ARCHIVO_REQUISITOS)
+    ruta_marca.write_text(hash_requisitos, encoding='utf-8')
     print("   [OK] Dependencias instaladas")
 
 
-def run_main_app(args=None):
+def asegurar_entorno():
+    """Verifica el entorno virtual y las dependencias necesarias antes del arranque."""
+    if existe_entorno_virtual():
+        print(f"[OK] Entorno virtual encontrado: {DIRECTORIO_ENTORNO_VIRTUAL}")
+    else:
+        print(f"[OK]  Entorno virtual no encontrado")
+        crear_entorno_virtual()
+
+    instalar_requisitos()
+
+
+def ejecutar_aplicacion_principal(argumentos=None):
     """Ejecuta la aplicación principal después de configurar el entorno virtual"""
-    python_exe = get_python_executable()
-	
-    if not os.path.exists(MAIN_FILE):
-        print(f"[!] Error: {MAIN_FILE} no encontrado")
+    argumentos = normalizar_argumentos_lanzador(argumentos)
+    ejecutable_python = obtener_ejecutable_python()
+
+    if not os.path.exists(ARCHIVO_PRINCIPAL):
+        print(f"[!] Error: {ARCHIVO_PRINCIPAL} no encontrado")
         sys.exit(1)
-	
+
     print(f"[OK] Iniciando AudiTorría...\n")
     print("─" * 70)
-    args = args or []
-    subprocess.run([python_exe, MAIN_FILE, *args], check=True)
+    subprocess.run([ejecutable_python, ARCHIVO_PRINCIPAL, *argumentos], check=True)
 
 
-def print_banner():
+def mostrar_banner():
     """Muestra el banner del lanzador"""
     print("""
 ╔═══════════════════════════════════════════════════════════════════════════════╗
@@ -103,42 +157,35 @@ def print_banner():
 """)
 
 
-def main():
+def principal(argumentos=None):
     """Función principal del lanzador"""
     # Cambiar al directorio que contenga este script
     os.chdir(Path(__file__).parent)
     
-    print_banner()
+    mostrar_banner()
 
     try:
-        # Paso 1: Verificar/crear entorno virtual
-        if is_venv_exists():
-            print(f"[OK] Entorno virtual encontrado: {VENV_DIR}")
-        else:
-            print(f"[OK]  Entorno virtual no encontrado")
-            create_venv()
-        
-        # Paso 2: Instalar dependencias
-        install_requirements()
-        
-        # Paso 3: Ejecutar aplicación (reenviando argumentos)
-        run_main_app(sys.argv[1:])
+        asegurar_entorno()
+        ejecutar_aplicacion_principal(argumentos if argumentos is not None else sys.argv[1:])
         
     except KeyboardInterrupt:
         print("\n[OK] AudiTorría finalizado por el usuario")
         sys.exit(0)
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError as error_subproceso:
         # Ignorar si el proceso fue interrumpido por señal (código 130 = SIGINT)
-        if e.returncode == 130 or e.returncode == -2:
+        if error_subproceso.returncode == 130 or error_subproceso.returncode == -2:
             print("\n[OK] AudiTorría finalizado correctamente")
             sys.exit(0)
-        print(f"[!] Error ocurrido: {e}")
+        print(f"[!] Error ocurrido: {error_subproceso}")
+        detalles = formatear_error_subproceso(error_subproceso)
+        if detalles:
+            print(detalles)
         sys.exit(1)
-    except Exception as e:
-        print(f"[!] Error inesperado: {e}")
+    except Exception as error_inesperado:
+        print(f"[!] Error inesperado: {error_inesperado}")
         sys.exit(1)
 
 
 if __name__ == '__main__':
-    main()
+    principal()
     

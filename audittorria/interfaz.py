@@ -63,6 +63,7 @@ class VentanaPrincipal:
         self.filtro_texto_var = tk.StringVar()
         self.filtro_estado_var = tk.StringVar(value="Todos")
         self.filtro_solo_puertos_var = tk.BooleanVar(value=False)
+        self.ruta_pdf_generado: Path | None = None
 
         # Estas estructuras mantienen los resultados en memoria para filtrarlos y ver detalles.
         self.resultados_actuales: list[ResultadoEquipo] = []
@@ -186,6 +187,13 @@ class VentanaPrincipal:
         self.boton_ejecutar.pack(side=tk.LEFT)
         ttk.Button(marco_botones, text="Limpiar mensajes", command=self._limpiar_registro).pack(side=tk.LEFT, padx=10)
         ttk.Button(marco_botones, text="Abrir carpeta de informes", command=self._abrir_carpeta_reportes).pack(side=tk.LEFT)
+        self.boton_abrir_pdf = ttk.Button(
+            marco_botones,
+            text="Abrir ubicación del PDF",
+            command=self._abrir_ubicacion_pdf_generado,
+            state="disabled",
+        )
+        self.boton_abrir_pdf.pack(side=tk.LEFT, padx=(10, 0))
 
         # Barra de progreso determinista para mostrar el porcentaje real procesado.
         marco_progreso = ttk.Frame(marco_principal)
@@ -764,6 +772,8 @@ class VentanaPrincipal:
 
         self._limpiar_registro()
         self._reiniciar_resultados()
+        self.ruta_pdf_generado = None
+        self.boton_abrir_pdf.configure(state="disabled")
         self._escribir_registro(f"Objetivos preparados: {len(parametros.objetivos)}")
         if parametros.modo_auditoria == "local":
             self._escribir_registro("Modo seleccionado: auditoría local avanzada del equipo")
@@ -833,6 +843,8 @@ class VentanaPrincipal:
         self.barra_progreso.configure(value=100)
         self.porcentaje_var.set("100%")
         self.boton_ejecutar.configure(state="normal")
+        self.ruta_pdf_generado = Path(resumen.parametros.ruta_pdf).expanduser().resolve()
+        self.boton_abrir_pdf.configure(state="normal")
         self.resultados_actuales = list(resumen.resultados)
         self.resultados_por_ip = {resultado.ip: resultado for resultado in resumen.resultados}
         self._aplicar_filtros_tabla()
@@ -844,6 +856,7 @@ class VentanaPrincipal:
     def _manejar_error(self, mensaje: str) -> None:
         """Restaura el estado de la ventana y muestra el error al usuario."""
         self.boton_ejecutar.configure(state="normal")
+        self.boton_abrir_pdf.configure(state="disabled")
         self.estado_var.set("La auditoría terminó con errores.")
         self._escribir_registro(f"Error: {mensaje}")
         messagebox.showerror(NOMBRE_APLICACION, mensaje)
@@ -1191,6 +1204,37 @@ class VentanaPrincipal:
                 subprocess.run(["xdg-open", str(carpeta)], check=False)
         except Exception as error:  # noqa: BLE001
             messagebox.showerror(NOMBRE_APLICACION, f"No se pudo abrir la carpeta: {error}")
+
+    def _abrir_ubicacion_pdf_generado(self) -> None:
+        """Abre el administrador de archivos en la ubicación del PDF generado."""
+        if self.ruta_pdf_generado is None:
+            messagebox.showinfo(NOMBRE_APLICACION, "Todavía no hay ningún PDF generado en esta sesión.")
+            return
+
+        ruta_pdf = self.ruta_pdf_generado.expanduser().resolve()
+        carpeta_pdf = ruta_pdf.parent
+
+        try:
+            carpeta_pdf.mkdir(parents=True, exist_ok=True)
+
+            if os.name == "nt":
+                if ruta_pdf.exists():
+                    import subprocess
+
+                    subprocess.run(["explorer", "/select,", str(ruta_pdf)], check=False)
+                else:
+                    os.startfile(str(carpeta_pdf))  # type: ignore[attr-defined]
+                return
+
+            if os.name == "posix":
+                import subprocess
+
+                subprocess.run(["xdg-open", str(carpeta_pdf)], check=False)
+                return
+
+            webbrowser.open(carpeta_pdf.as_uri())
+        except Exception as error:  # noqa: BLE001
+            messagebox.showerror(NOMBRE_APLICACION, f"No se pudo abrir la ubicación del PDF: {error}")
 
     def ejecutar(self) -> int:
         """Arranca el bucle principal de Tkinter."""

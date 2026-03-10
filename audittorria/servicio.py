@@ -10,7 +10,7 @@ from __future__ import annotations
 from .auditoria import auditar_objetivos
 from .auditoria_local import auditar_equipo_local
 from .informes import generar_pdf
-from .modelos import NotificadorProgreso, ParametrosAuditoria, ResumenAuditoria
+from .modelos import NotificadorProgreso, ParametrosAuditoria, ProgresoAuditoria, ResumenAuditoria
 
 
 # --------------------------------------------------------------------------------------
@@ -24,20 +24,26 @@ def ejecutar_auditoria_completa(
 ) -> ResumenAuditoria:
     """Ejecuta la auditoría y crea el PDF final devolviendo el resumen resultante."""
     if parametros.modo_auditoria == "local":
-        resumen = auditar_equipo_local(parametros)
-        if notificar_progreso is not None:
-            from .modelos import ProgresoAuditoria
-
-            notificar_progreso(
-                ProgresoAuditoria(
-                    completados=1,
-                    total=1,
-                    porcentaje=100.0,
-                    mensaje=f"1/1 - {resumen.resultados[0].ip} -> auditoría local completada",
-                    resultado_equipo=resumen.resultados[0],
-                )
-            )
+        resumen = auditar_equipo_local(parametros, notificar_progreso=notificar_progreso)
     else:
         resumen = auditar_objetivos(parametros, notificar_progreso=notificar_progreso)
+
     generar_pdf(resumen)
+
+    if notificar_progreso is not None and resumen.resultados:
+        mensaje_final = (
+            f"1/1 - {resumen.resultados[0].ip} -> auditoría local completada"
+            if parametros.modo_auditoria == "local"
+            else f"{len(resumen.resultados)}/{len(resumen.resultados)} - informe PDF generado"
+        )
+        notificar_progreso(
+            ProgresoAuditoria(
+                completados=1 if parametros.modo_auditoria == "local" else len(resumen.resultados),
+                total=1 if parametros.modo_auditoria == "local" else len(resumen.resultados),
+                porcentaje=100.0,
+                mensaje=mensaje_final,
+                resultado_equipo=resumen.resultados[0] if parametros.modo_auditoria == "local" else None,
+            )
+        )
+
     return resumen
