@@ -1,5 +1,7 @@
 # AudiTorría
 
+<img width="1408" height="768" alt="logo" src="https://github.com/user-attachments/assets/a401e6bf-af56-4f23-9b76-0d93ebff2f3a" />
+
 AudiTorría es una herramienta creada para revisar la seguridad básica de equipos y redes.
 Funciona en Linux y Windows, tiene interfaz gráfica y permite guardar los resultados en PDF.
 
